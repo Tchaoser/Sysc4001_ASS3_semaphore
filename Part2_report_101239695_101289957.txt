@@ -36,3 +36,45 @@ reportPartD
     The combination of the revised semaphore acquisition approach and random delays 
     ensures that the TAs eventually break out of any temporary waiting conditions. 
     Each TA completes its three cycles through the student list without becoming permanently stuck.
+
+reportPartE
+    Discussion of Deadlock/Livelock Prevention:
+
+    In the revised solution, we avoid both deadlock and livelock through a combination of strategy and randomness:
+
+    Deadlock Prevention via Global Ordering:
+
+    The core method used is to impose a strict global ordering on how each Teaching Assistant (TA)
+    acquires semaphores. Instead of each TA always trying to pick up its “left” semaphore and then 
+    its “right” one in a uniform manner, we compare the semaphore indices and order them consistently. 
+    Each TA always acquires the lower-numbered semaphore first, and then the higher-numbered semaphore second, 
+    regardless of which side is considered “left” or “right.”
+
+    This approach effectively eliminates the circular waiting condition that leads to deadlock. 
+    In classic deadlock scenarios, each process can be waiting for a resource held by another, forming a closed loop. 
+    By having all TAs adhere to a global ordering (e.g., always acquire the semaphore with the smaller index before the 
+    one with the larger index), we break that potential loop. No cycle of waiting can form, because there is a total order 
+    on resource acquisition. Thus, deadlock cannot occur.
+
+    Livelock Prevention via Random Delays:
+
+    Livelock occurs when processes continually take actions but no actual progress 
+    is made—they keep changing states in a pattern that repeats indefinitely. While global ordering
+    eliminates stable deadlocks, could the TAs still repeatedly release and reacquire semaphores without 
+    anyone making meaningful progress?
+
+    We reduce this risk through the use of random delays. Each TA experiences random sleep times when accessing
+    the database (1-4 seconds) and marking (1-10 seconds). These random delays break symmetry and make it extremely 
+    unlikely that all TAs will continuously “dance around” acquiring and releasing semaphores in a stable pattern. 
+    Instead, the randomness ensures that eventually one TA will proceed at a slightly different time than the others, 
+    successfully acquiring both semaphores and making forward progress.
+
+    With this non-deterministic timing, even if multiple TAs attempt to acquire resources simultaneously, small differences 
+    in execution time, scheduling, and the inserted random waits ensure that at least one TA moves forward, allowing the system 
+    to progress. Over time, all TAs will complete their tasks, demonstrating that livelock does not persist.
+
+    Conclusion:
+
+    By enforcing a strict global ordering on semaphore acquisition, we eliminate the conditions necessary for deadlock. 
+    By incorporating random delays and non-deterministic timing, we prevent a stable pattern from forming that could lead to livelock. 
+    Consequently, our process is both deadlock-free and livelock-free.
