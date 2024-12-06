@@ -1,163 +1,123 @@
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <semaphore.h>
-#include <pthread.h>
-#include <time.h>
-
-
-//how to run
+//how to run the code
 //   gcc -pthread Part2_A_101239695_101289957.c -o Part2_A_101239695_101289957
 //   ./Part2_A_101239695_101289957
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <semaphore.h>
+#include <sys/wait.h>
+#include <time.h>
+#include <string.h>
 
 #define NUM_TAS 5
-#define NUM_ITERATIONS 3
-#define STUDENT_LIST_FILE "database.txt"
+#define NUM_STUDENTS 20
+#define MAX_REPEATS 3
 
-sem_t semaphores[NUM_TAS];
-int current_line = 0;
-int iterations_completed = 0;
+sem_t *semaphores[NUM_TAS];
+char *database_file = "database.txt";
+char *ta_files[NUM_TAS] = {"TA1.txt", "TA2.txt", "TA3.txt", "TA4.txt", "TA5.txt"};
 
+void mark_student(int ta_id, int repeat_count) {
+    FILE *db_fp, *ta_fp;
+    char student[5];
+    int delay, mark;
 
-typedef struct {
-    int ta_id;
-    int current_iterations;
-} TA_Args;
+    while (repeat_count < MAX_REPEATS) {
+        // Access database
+        sem_wait(semaphores[ta_id]);
+        sem_wait(semaphores[(ta_id + 1) % NUM_TAS]);
 
-// Function to generate random delay
-void random_delay(int min, int max) {
-    int delay = rand() % (max - min + 1) + min;
-    sleep(delay);
-}
+        printf("TA %d: Accessing the database.\n", ta_id + 1);
 
-// Function to read next student from database
-int get_next_student(FILE* db_file) {
-    int student_number;
-    
-    // If end of file or reached end marker, reset
-    if (fscanf(db_file, "%d", &student_number) != 1 || student_number == 9999) {
-        rewind(db_file);
-        fscanf(db_file, "%d", &student_number);
-    }
-    
-    return student_number;
-}
+        db_fp = fopen(database_file, "r");
+        ta_fp = fopen(ta_files[ta_id], "a");
 
-
-void* ta_process(void* arg) {
-    TA_Args* ta_args = (TA_Args*)arg;
-    int ta_id = ta_args->ta_id;
-    
-    // Open database file
-    FILE* db_file = fopen(STUDENT_LIST_FILE, "r");
-    if (!db_file) {
-        perror("Error opening student list");
-        return NULL;
-    }
-    
-    // Create individual TA marking file
-    char filename[20];
-    snprintf(filename, sizeof(filename), "TA%d.txt", ta_id);
-    FILE* ta_file = fopen(filename, "w");
-    if (!ta_file) {
-        perror("Error creating TA marking file");
-        fclose(db_file);
-        return NULL;
-    }
-    
-    while (ta_args->current_iterations < NUM_ITERATIONS) {
-        // Lock required semaphores (current and next)
-        int next_sem = (ta_id % NUM_TAS);
-        printf("TA %d trying to access database\n", ta_id);
-        
-        sem_wait(&semaphores[ta_id - 1]);
-        sem_wait(&semaphores[next_sem]);
-        
-        // Access database and get next student
-        int student_number = get_next_student(db_file);
-        printf("TA %d selected student %d\n", ta_id, student_number);
-        
-        // Release semaphores
-        sem_post(&semaphores[next_sem]);
-        sem_post(&semaphores[ta_id - 1]);
-        
-        // Simulate marking process
-        printf("TA %d marking student %d\n", ta_id, student_number);
-        random_delay(1, 4);
-        
-        // Generate and save mark
-        int mark = rand() % 11;
-        fprintf(ta_file, "Student %d: Mark %d\n", student_number, mark);
-        fflush(ta_file);
-        
-        // Simulate marking time
-        random_delay(1, 10);
-        
-        // Check if completed an iteration
-        if (student_number == 9999) {
-            ta_args->current_iterations++;
+        if (!db_fp || !ta_fp) {
+            perror("File open error");
+            exit(1);
         }
-    }
-    
-    fclose(db_file);
-    fclose(ta_file);
-    return NULL;
-}
 
-// Function to create student list file
-void create_student_list() {
-    FILE* file = fopen(STUDENT_LIST_FILE, "w");
-    if (!file) {
-        perror("Error creating student list");
-        exit(1);
+        // Read next student number
+        while (fscanf(db_fp, "%s", student) != EOF) {
+            if (strcmp(student, "9999") == 0) {
+                repeat_count++;
+                if (repeat_count >= MAX_REPEATS) {
+                    fclose(db_fp);
+                    fclose(ta_fp);
+                    sem_post(semaphores[(ta_id + 1) % NUM_TAS]);
+                    sem_post(semaphores[ta_id]);
+                    printf("TA %d: Completed marking.\n", ta_id + 1);
+                    exit(0);
+                }
+                continue;
+            }
+
+            delay = rand() % 4 + 1; // Random delay (1-4 seconds)
+            printf("TA %d: Marking student %s.\n", ta_id + 1, student);
+            sleep(delay);
+
+            // Mark student
+            mark = rand() % 11; // Random mark (0-10)
+            fprintf(ta_fp, "Student %s: Mark %d\n", student, mark);
+
+            break;
+        }
+
+        fclose(db_fp);
+        fclose(ta_fp);
+
+        // Release semaphores
+        sem_post(semaphores[(ta_id + 1) % NUM_TAS]);
+        sem_post(semaphores[ta_id]);
+
+        delay = rand() % 10 + 1; // Random delay (1-10 seconds)
+        sleep(delay);
     }
-    
-    // Generate 20 lines with 4 students per line
-    for (int i = 0; i < 5; i++) {
-        fprintf(file, "%04d %04d %04d %04d\n", 
-                1 + i*4, 2 + i*4, 3 + i*4, 9999);
-    }
-    
-    fclose(file);
 }
 
 int main() {
-    // Seed random number generator
-    srand(time(NULL));
-    
-    // Create student list file
-    create_student_list();
-    
+    pid_t pids[NUM_TAS];
+    int i;
+
     // Initialize semaphores
-    for (int i = 0; i < NUM_TAS; i++) {
-        sem_init(&semaphores[i], 0, 1);
-    }
-    
-    // Create threads for TAs
-    pthread_t ta_threads[NUM_TAS];
-    TA_Args ta_args[NUM_TAS];
-    
-    for (int i = 0; i < NUM_TAS; i++) {
-        ta_args[i].ta_id = i + 1;
-        ta_args[i].current_iterations = 0;
-        
-        if (pthread_create(&ta_threads[i], NULL, ta_process, &ta_args[i]) != 0) {
-            perror("Error creating TA thread");
+    for (i = 0; i < NUM_TAS; i++) {
+        char sem_name[10];
+        sprintf(sem_name, "sem%d", i);
+        semaphores[i] = sem_open(sem_name, O_CREAT, 0644, 1);
+        if (semaphores[i] == SEM_FAILED) {
+            perror("Semaphore initialization failed");
             exit(1);
         }
     }
-    
-    // Wait for all threads to complete
-    for (int i = 0; i < NUM_TAS; i++) {
-        pthread_join(ta_threads[i], NULL);
+
+    // Seed random number generator
+    srand(time(NULL));
+
+    // Create TA processes
+    for (i = 0; i < NUM_TAS; i++) {
+        if ((pids[i] = fork()) == 0) {
+            mark_student(i, 0);
+            exit(0);
+        }
     }
-    
-    // Destroy semaphores
-    for (int i = 0; i < NUM_TAS; i++) {
-        sem_destroy(&semaphores[i]);
+
+    // Wait for all TAs to finish
+    for (i = 0; i < NUM_TAS; i++) {
+        wait(NULL);
     }
-    
+
+    // Cleanup semaphores
+    for (i = 0; i < NUM_TAS; i++) {
+        sem_close(semaphores[i]);
+        char sem_name[10];
+        sprintf(sem_name, "sem%d", i);
+        sem_unlink(sem_name);
+    }
+
+    printf("All TAs have completed marking.\n");
     return 0;
 }
