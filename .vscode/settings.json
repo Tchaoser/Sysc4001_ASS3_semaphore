@@ -13,5 +13,8 @@
             "statusBarVisibility": "inherit",
             "inheritDefault": "visible"
         }
+    },
+    "files.associations": {
+        "mman.h": "c"
     }
 }
