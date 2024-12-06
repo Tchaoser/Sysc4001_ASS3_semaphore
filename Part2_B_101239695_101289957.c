@@ -13,16 +13,16 @@
 #define NUM_CYCLES 3
 #define NUM_TAS 5
 
-// Structure for shared memory
+// Shared memory structure
 struct shared_data {
     sem_t sem[NUM_TAS];
-    char students[NUM_STUDENTS][5]; // 20 students, each 4 chars + '\0'
+    char students[NUM_STUDENTS][5]; // 20 lines of 4-digit numbers, last is "9999"
 };
 
 int main() {
     srand(time(NULL));
 
-    // Create shared memory for semaphores and student list
+    // Create shared memory
     int prot = PROT_READ | PROT_WRITE;
     int flags = MAP_SHARED | MAP_ANONYMOUS;
     struct shared_data* shm = (struct shared_data*) mmap(NULL, sizeof(struct shared_data), prot, flags, -1, 0);
@@ -31,7 +31,7 @@ int main() {
         return 1;
     }
 
-    // Initialize semaphores
+    // Initialize semaphores in shared memory
     for (int i = 0; i < NUM_TAS; i++) {
         if (sem_init(&shm->sem[i], 1, 1) < 0) {
             perror("sem_init");
@@ -39,7 +39,7 @@ int main() {
         }
     }
 
-    // Read the database file into shared memory
+    // Load the database into shared memory
     FILE* fin = fopen("database.txt", "r");
     if (!fin) {
         perror("fopen database.txt");
@@ -62,81 +62,87 @@ int main() {
             perror("fork");
             return 1;
         } else if (pid == 0) {
-            // Child: TA process
-            // Each TA processes the students from the start and does 3 cycles
+            // Child process: TA logic
+            char filename[20];
+            snprintf(filename, sizeof(filename), "TA%d.txt", ta_id);
+            FILE* fout = fopen(filename, "w");
+            if (!fout) {
+                fprintf(stderr, "TA %d: Could not open output file.\n", ta_id);
+                _exit(1);
+            }
+
             int cycle_count = 0;
             int current_index = 0;
 
             while (cycle_count < NUM_CYCLES) {
-                // ACCESS DATABASE PHASE
-                // TA j locks sem j and sem (j+1)%5
-                // zero-based indexing for semaphores: TA ta_id => sem index (ta_id-1)
                 int left_sem = ta_id - 1;
                 int right_sem = (ta_id % NUM_TAS);
 
-                // Wait (lock) on both semaphores
+                // Lock both semaphores
                 sem_wait(&shm->sem[left_sem]);
                 sem_wait(&shm->sem[right_sem]);
 
-                // Now access the database
+                // Accessing the database
                 printf("TA %d is accessing the database.\n", ta_id);
                 fflush(stdout);
 
-                // Simulate database access delay 1-4 sec
                 int delay_db = 1 + rand() % 4;
                 sleep(delay_db);
 
                 // Get the current student from shared memory
                 const char* student_id = shm->students[current_index];
 
-                // Release semaphores so others can access the database
+                // Release semaphores after reading the student
                 sem_post(&shm->sem[right_sem]);
                 sem_post(&shm->sem[left_sem]);
 
-                // Now MARKING PHASE
+                // Marking phase
                 printf("TA %d is marking student %s.\n", ta_id, student_id);
                 fflush(stdout);
 
-                // Check if we reached "9999" -> end of cycle
+                // Check if we reached "9999"
                 if (strcmp(student_id, "9999") == 0) {
                     cycle_count++;
                     current_index = 0; 
                 } else {
                     current_index++;
                     if (current_index >= NUM_STUDENTS) {
-                        // Should not happen, but in case:
+                        // Just in case, wrap around
                         current_index = 0;
                     }
                 }
 
                 // Random mark between 0 and 10
                 int mark = rand() % 11;
-                // Simulate marking delay 1-10 sec
+                // Marking delay 1-10 sec
                 int delay_mark = 1 + rand() % 10;
                 sleep(delay_mark);
 
-                // Just print the mark since we are not writing to file now
+                // Write to TA file
+                fprintf(fout, "%s %d\n", student_id, mark);
+                fflush(fout);
+
                 printf("TA %d finished marking student %s with mark %d.\n", ta_id, student_id, mark);
                 fflush(stdout);
             }
 
+            fclose(fout);
             printf("TA %d finished all cycles.\n", ta_id);
             fflush(stdout);
             _exit(0);
         }
-        // Parent continues to spawn the other TAs
+        // Parent continues to next TA
     }
 
-    // Parent: wait for all TAs
+    // Parent waits for all TAs
     for (int i = 0; i < NUM_TAS; i++) {
         wait(NULL);
     }
 
-    // Destroy semaphores and unmap memory
+    // Destroy semaphores and unmap shared memory
     for (int i = 0; i < NUM_TAS; i++) {
         sem_destroy(&shm->sem[i]);
     }
-
     munmap(shm, sizeof(*shm));
 
     printf("All TAs have finished.\n");
