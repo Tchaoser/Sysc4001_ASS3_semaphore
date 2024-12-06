@@ -1,0 +1,38 @@
+reportPartD
+    Analysis of Potential Deadlock or Livelock Conditions:
+
+        After running the modified program multiple times, no persistent deadlock was observed. 
+    The updated semaphore acquisition protocol attempts to acquire the first semaphore, 
+    and if the second is not available, it releases the first one before trying again. 
+    This prevents a scenario where each TA holds one semaphore and waits indefinitely for another,
+    which is the classic deadlock scenario.
+
+    Reasons No Deadlock Occurs:
+
+        1. Modified Protocol: Instead of each TA process acquiring one semaphore and 
+        then blocking on the second, the TA now releases the first semaphore if it cannot get the second. This prevents the stable condition where all TAs are stuck holding one semaphore and waiting for another.
+
+        2. Random Delays and Non-Determinism: Each TA’s operation involves random delays 
+        (1-4 seconds accessing the database, and 1-10 seconds marking). These random times 
+        break symmetry and decrease the chance of all TAs attempting the same actions at the same time. 
+        As a result, it is unlikely for them to fall into a perfect cycle that could cause livelock.
+
+        3. Eventually Successful Acquisition: Because TAs release the first semaphore if the second is unavailable,
+        resources keep getting freed up. Eventually, one TA will find both semaphores available and proceed.
+        Once that TA moves forward, it releases both semaphores after accessing the database,
+        giving another TA the chance to acquire them. This ensures continual progress.
+
+    Potential Livelock:
+
+        While a true deadlock scenario is prevented by the new protocol,
+    a theoretical livelock situation could still occur if the timing causes TAs
+    to continually pick up and release semaphores without anyone making progress. 
+    However, due to the randomness and variability in execution, this situation is highly unlikely.
+    In multiple test runs, such a livelock was not observed.
+
+    Conclusion:
+
+    No deadlock was observed during the test runs. 
+    The combination of the revised semaphore acquisition approach and random delays 
+    ensures that the TAs eventually break out of any temporary waiting conditions. 
+    Each TA completes its three cycles through the student list without becoming permanently stuck.
