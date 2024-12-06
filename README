@@ -1,1 +1,3 @@
-
+//how to run the code
+gcc -pthread Part2_A_101239695_101289957.c -o Part2_A_101239695_101289957
+./Part2_A_101239695_101289957
